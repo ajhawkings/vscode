@@ -83,8 +83,15 @@ suite('ActivitybarPart', () => {
 		const stubInstantiationService = { createInstance: () => { throw new Error('not expected'); } } as unknown as IInstantiationService;
 
 		const part = disposables.add(new ActivitybarPart(
+			Parts.ACTIVITYBAR_PART,
 			ViewContainerLocation.Sidebar,
 			new StubPaneCompositePart(),
+			{
+				pinnedViewContainersKey: 'test.pinnedViewContainers',
+				placeholderViewContainersKey: 'test.placeholderViewContainers',
+				viewContainersWorkspaceStateKey: 'test.viewContainersWorkspaceState',
+			},
+			true,
 			stubInstantiationService,
 			layoutService,
 			themeService,

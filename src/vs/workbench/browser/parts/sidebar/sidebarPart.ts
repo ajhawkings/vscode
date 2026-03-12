@@ -64,7 +64,17 @@ export class SidebarPart extends AbstractPaneCompositePart {
 		return Math.max(width, 300);
 	}
 
-	private readonly activityBarPart = this._register(this.instantiationService.createInstance(ActivitybarPart, this.location, this));
+	private readonly activityBarPart = this._register(this.instantiationService.createInstance(ActivitybarPart,
+		Parts.ACTIVITYBAR_PART,
+		this.location,
+		this,
+		{
+			pinnedViewContainersKey: ActivitybarPart.pinnedViewContainersKey,
+			placeholderViewContainersKey: ActivitybarPart.placeholderViewContainersKey,
+			viewContainersWorkspaceStateKey: ActivitybarPart.viewContainersWorkspaceStateKey,
+		},
+		true, // showGlobalActivities
+	));
 	private readonly visibleViewContainersTracker: VisibleViewContainersTracker;
 
 	//#endregion

@@ -34,6 +34,7 @@ import { getContextMenuActions } from '../../../../platform/actions/browser/menu
 import { IHoverService } from '../../../../platform/hover/browser/hover.js';
 import { VisibleViewContainersTracker } from '../visibleViewContainersTracker.js';
 import { Extensions } from '../../panecomposite.js';
+import { ActivitybarPart } from '../activitybar/activitybarPart.js';
 
 interface IAuxiliaryBarPartConfiguration {
 	position: ActivityBarPosition;
@@ -80,6 +81,7 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 
 	private configuration: IAuxiliaryBarPartConfiguration;
 	private readonly visibleViewContainersTracker: VisibleViewContainersTracker;
+	private readonly activityBarPart: ActivitybarPart;
 
 	constructor(
 		@INotificationService notificationService: INotificationService,
@@ -133,10 +135,23 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 		this.visibleViewContainersTracker = this._register(instantiationService.createInstance(VisibleViewContainersTracker, ViewContainerLocation.AuxiliaryBar));
 		this._register(this.visibleViewContainersTracker.onDidChange((e) => this.onDidChangeAutoHideViewContainers(e)));
 
+		// Create secondary activity bar part
+		this.activityBarPart = this._register(instantiationService.createInstance(ActivitybarPart,
+			Parts.SECONDARY_ACTIVITYBAR_PART,
+			this.location,
+			this,
+			{
+				pinnedViewContainersKey: AuxiliaryBarPart.pinnedViewsKey,
+				placeholderViewContainersKey: AuxiliaryBarPart.placeholdeViewContainersKey,
+				viewContainersWorkspaceStateKey: AuxiliaryBarPart.viewContainersWorkspaceStateKey,
+			},
+			false, // no global activities (accounts, settings) on secondary bar
+		));
+
 		this.configuration = this.resolveConfiguration();
 
 		this._register(configurationService.onDidChangeConfiguration(e => {
-			if (e.affectsConfiguration(LayoutSettings.ACTIVITY_BAR_LOCATION)) {
+			if (e.affectsConfiguration(LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION)) {
 				this.configuration = this.resolveConfiguration();
 				this.onDidChangeActivityBarLocation();
 			} else if (e.affectsConfiguration('workbench.secondarySideBar.showLabels')) {
@@ -161,20 +176,26 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 	}
 
 	private resolveConfiguration(): IAuxiliaryBarPartConfiguration {
-		const position = this.configurationService.getValue<ActivityBarPosition>(LayoutSettings.ACTIVITY_BAR_LOCATION);
+		const position = this.configurationService.getValue<ActivityBarPosition>(LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION);
 
-		const canShowLabels = position !== ActivityBarPosition.TOP && position !== ActivityBarPosition.BOTTOM; // use same style as activity bar in this case
+		const canShowLabels = position !== ActivityBarPosition.TOP && position !== ActivityBarPosition.BOTTOM;
 		const showLabels = canShowLabels && this.configurationService.getValue('workbench.secondarySideBar.showLabels') !== false;
 
 		return { position, canShowLabels, showLabels };
 	}
 
 	private onDidChangeActivityBarLocation(): void {
+		this.activityBarPart.hide();
+
 		this.updateCompositeBar();
 
 		const id = this.getActiveComposite()?.getId();
 		if (id) {
 			this.onTitleAreaUpdate(id);
+		}
+
+		if (this.shouldShowActivityBar()) {
+			this.activityBarPart.show();
 		}
 	}
 
@@ -241,7 +262,7 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 			}
 		}
 
-		const activityBarPositionMenu = this.menuService.getMenuActions(MenuId.ActivityBarPositionMenu, this.contextKeyService, { shouldForwardArgs: true, renderShortTitle: true });
+		const activityBarPositionMenu = this.menuService.getMenuActions(MenuId.SecondaryActivityBarPositionMenu, this.contextKeyService, { shouldForwardArgs: true, renderShortTitle: true });
 		const positionActions = getContextMenuActions(activityBarPositionMenu).secondary;
 
 		const toggleShowLabelsAction = toAction({
@@ -253,7 +274,7 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 
 		actions.push(...[
 			new Separator(),
-			new SubmenuAction('workbench.action.panel.position', localize('activity bar position', "Activity Bar Position"), positionActions),
+			new SubmenuAction('workbench.action.panel.position', localize('secondary activity bar position', "Secondary Activity Bar Position"), positionActions),
 			toAction({ id: ToggleSidebarPositionAction.ID, label: currentPositionRight ? localize('move second side bar left', "Move Secondary Side Bar Left") : localize('move second side bar right', "Move Secondary Side Bar Right"), run: () => this.commandService.executeCommand(ToggleSidebarPositionAction.ID) }),
 			toggleShowLabelsAction,
 			toAction({ id: ToggleAuxiliaryBarAction.ID, label: localize('hide second side bar', "Hide Secondary Side Bar"), run: () => this.commandService.executeCommand(ToggleAuxiliaryBarAction.ID) })
@@ -262,6 +283,11 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 
 	protected shouldShowCompositeBar(): boolean {
 		if (this.configuration.position === ActivityBarPosition.HIDDEN) {
+			return false;
+		}
+
+		// When activity bar is in SIDE position, we show the vertical activity bar instead
+		if (this.configuration.position === ActivityBarPosition.SIDE) {
 			return false;
 		}
 
@@ -283,6 +309,10 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 		return true;
 	}
 
+	private shouldShowActivityBar(): boolean {
+		return this.configuration.position === ActivityBarPosition.SIDE;
+	}
+
 	protected getCompositeBarPosition(): CompositeBarPosition {
 		switch (this.configuration.position) {
 			case ActivityBarPosition.TOP: return CompositeBarPosition.TOP;
@@ -290,6 +320,30 @@ export class AuxiliaryBarPart extends AbstractPaneCompositePart {
 			case ActivityBarPosition.HIDDEN: return CompositeBarPosition.TITLE;
 			case ActivityBarPosition.DEFAULT: return CompositeBarPosition.TITLE;
 			default: return CompositeBarPosition.TITLE;
+		}
+	}
+
+	override getPinnedPaneCompositeIds(): string[] {
+		return this.shouldShowActivityBar() ? this.activityBarPart.getPinnedPaneCompositeIds() : super.getPinnedPaneCompositeIds();
+	}
+
+	override getVisiblePaneCompositeIds(): string[] {
+		return this.shouldShowActivityBar() ? this.activityBarPart.getVisiblePaneCompositeIds() : super.getVisiblePaneCompositeIds();
+	}
+
+	override getPaneCompositeIds(): string[] {
+		return this.shouldShowActivityBar() ? this.activityBarPart.getPaneCompositeIds() : super.getPaneCompositeIds();
+	}
+
+	async focusActivityBar(): Promise<void> {
+		if (this.shouldShowCompositeBar()) {
+			this.focusCompositeBar();
+		} else {
+			if (!this.layoutService.isVisible(Parts.SECONDARY_ACTIVITYBAR_PART)) {
+				this.layoutService.setPartHidden(false, Parts.SECONDARY_ACTIVITYBAR_PART);
+			}
+
+			this.activityBarPart.show(true);
 		}
 	}
 

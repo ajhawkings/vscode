@@ -39,6 +39,12 @@ import { IWorkbenchEnvironmentService } from '../../../services/environment/comm
 import { IViewsService } from '../../../services/views/common/viewsService.js';
 import { SwitchCompositeViewAction } from '../compositeBarActions.js';
 
+export interface IActivitybarPartStorageKeys {
+	readonly pinnedViewContainersKey: string;
+	readonly placeholderViewContainersKey: string;
+	readonly viewContainersWorkspaceStateKey: string;
+}
+
 export class ActivitybarPart extends Part {
 
 	static readonly ACTION_HEIGHT = 48;
@@ -68,15 +74,18 @@ export class ActivitybarPart extends Part {
 	private _isCompact: boolean;
 
 	constructor(
+		private readonly partId: Parts.ACTIVITYBAR_PART | Parts.SECONDARY_ACTIVITYBAR_PART,
 		private readonly location: ViewContainerLocation,
 		private readonly paneCompositePart: IPaneCompositePart,
+		private readonly storageKeys: IActivitybarPartStorageKeys,
+		private readonly showGlobalActivities: boolean,
 		@IInstantiationService private readonly instantiationService: IInstantiationService,
 		@IWorkbenchLayoutService layoutService: IWorkbenchLayoutService,
 		@IThemeService themeService: IThemeService,
 		@IStorageService storageService: IStorageService,
 		@IConfigurationService private readonly configurationService: IConfigurationService,
 	) {
-		super(Parts.ACTIVITYBAR_PART, { hasTitle: false }, themeService, storageService, layoutService);
+		super(partId, { hasTitle: false }, themeService, storageService, layoutService);
 
 		this._isCompact = this.configurationService.getValue<boolean>(LayoutSettings.ACTIVITY_BAR_COMPACT) ?? false;
 
@@ -118,16 +127,24 @@ export class ActivitybarPart extends Part {
 		const actionHeight = this._isCompact ? ActivitybarPart.COMPACT_ACTION_HEIGHT : ActivitybarPart.ACTION_HEIGHT;
 		const iconSize = this._isCompact ? ActivitybarPart.COMPACT_ICON_SIZE : ActivitybarPart.ICON_SIZE;
 
+		const isSecondary = this.partId === Parts.SECONDARY_ACTIVITYBAR_PART;
 		return this.instantiationService.createInstance(ActivityBarCompositeBar, this.location, {
 			partContainerClass: 'activitybar',
-			pinnedViewContainersKey: ActivitybarPart.pinnedViewContainersKey,
-			placeholderViewContainersKey: ActivitybarPart.placeholderViewContainersKey,
-			viewContainersWorkspaceStateKey: ActivitybarPart.viewContainersWorkspaceStateKey,
+			pinnedViewContainersKey: this.storageKeys.pinnedViewContainersKey,
+			placeholderViewContainersKey: this.storageKeys.placeholderViewContainersKey,
+			viewContainersWorkspaceStateKey: this.storageKeys.viewContainersWorkspaceStateKey,
 			orientation: ActionsOrientation.VERTICAL,
 			icon: true,
 			iconSize,
 			activityHoverOptions: {
-				position: () => this.layoutService.getSideBarPosition() === Position.LEFT ? HoverPosition.RIGHT : HoverPosition.LEFT,
+				position: () => {
+					const sideBarLeft = this.layoutService.getSideBarPosition() === Position.LEFT;
+					// Primary activity bar: hover on the opposite side of the sidebar
+					// Secondary activity bar: hover on the opposite side (i.e. same side as sidebar)
+					return isSecondary
+						? (sideBarLeft ? HoverPosition.LEFT : HoverPosition.RIGHT)
+						: (sideBarLeft ? HoverPosition.RIGHT : HoverPosition.LEFT);
+				},
 			},
 			preventLoopNavigation: true,
 			recomputeSizes: false,
@@ -144,7 +161,7 @@ export class ActivitybarPart extends Part {
 				activeBackgroundColor: undefined, inactiveBackgroundColor: undefined, activeBorderBottomColor: undefined,
 			}),
 			overflowActionSize: actionHeight,
-		}, Parts.ACTIVITYBAR_PART, this.paneCompositePart, true);
+		}, this.partId, this.paneCompositePart, this.showGlobalActivities);
 	}
 
 	protected override createContentArea(parent: HTMLElement): HTMLElement {
@@ -153,7 +170,7 @@ export class ActivitybarPart extends Part {
 
 		this.updateCompactStyle();
 
-		if (this.layoutService.isVisible(Parts.ACTIVITYBAR_PART)) {
+		if (this.layoutService.isVisible(this.partId)) {
 			this.show();
 		}
 
@@ -235,7 +252,7 @@ export class ActivitybarPart extends Part {
 
 	toJSON(): object {
 		return {
-			type: Parts.ACTIVITYBAR_PART
+			type: this.partId
 		};
 	}
 }
@@ -419,14 +436,17 @@ export class ActivityBarCompositeBar extends PaneCompositeBar {
 	}
 
 	getActivityBarContextMenuActions(): IAction[] {
-		const activityBarPositionMenu = this.menuService.getMenuActions(MenuId.ActivityBarPositionMenu, this.contextKeyService, { shouldForwardArgs: true, renderShortTitle: true });
+		const isSecondary = this.part === Parts.SECONDARY_ACTIVITYBAR_PART;
+		const menuId = isSecondary ? MenuId.SecondaryActivityBarPositionMenu : MenuId.ActivityBarPositionMenu;
+		const activityBarPositionMenu = this.menuService.getMenuActions(menuId, this.contextKeyService, { shouldForwardArgs: true, renderShortTitle: true });
 		const positionActions = getContextMenuActions(activityBarPositionMenu).secondary;
 		const actions: IAction[] = [
 			new SubmenuAction('workbench.action.activityBar.position', localize('activity bar position', "Activity Bar Position"), positionActions),
 		];
 
 		// Show size submenu only when activity bar is in default position
-		const activityBarPosition = this.configurationService.getValue<string>(LayoutSettings.ACTIVITY_BAR_LOCATION);
+		const locationSetting = isSecondary ? LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION : LayoutSettings.ACTIVITY_BAR_LOCATION;
+		const activityBarPosition = this.configurationService.getValue<string>(locationSetting);
 		if (activityBarPosition === ActivityBarPosition.DEFAULT) {
 			const isCompact = this.configurationService.getValue<boolean>(LayoutSettings.ACTIVITY_BAR_COMPACT) ?? false;
 			const sizeActions = [
@@ -561,10 +581,146 @@ MenuRegistry.appendMenuItem(MenuId.MenubarAppearanceMenu, {
 MenuRegistry.appendMenuItem(MenuId.ViewContainerTitleContext, {
 	submenu: MenuId.ActivityBarPositionMenu,
 	title: localize('positionActivituBar', "Activity Bar Position"),
-	when: ContextKeyExpr.or(
-		ContextKeyExpr.equals('viewContainerLocation', ViewContainerLocationToString(ViewContainerLocation.Sidebar)),
-		ContextKeyExpr.equals('viewContainerLocation', ViewContainerLocationToString(ViewContainerLocation.AuxiliaryBar))
-	),
+	when: ContextKeyExpr.equals('viewContainerLocation', ViewContainerLocationToString(ViewContainerLocation.Sidebar)),
+	group: '3_workbench_layout_move',
+	order: 1
+});
+
+// Secondary Activity Bar Position Actions
+registerAction2(class extends Action2 {
+	constructor() {
+		super({
+			id: 'workbench.action.secondaryActivityBarLocation.default',
+			title: {
+				...localize2('positionSecondaryActivityBarDefault', 'Move Secondary Activity Bar to Default'),
+				mnemonicTitle: localize({ key: 'miDefaultSecondaryActivityBar', comment: ['&& denotes a mnemonic'] }, "&&Default"),
+			},
+			shortTitle: localize('secondaryDefault', "Default"),
+			category: Categories.View,
+			toggled: ContextKeyExpr.equals(`config.${LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION}`, ActivityBarPosition.DEFAULT),
+			menu: [{
+				id: MenuId.SecondaryActivityBarPositionMenu,
+				order: 1
+			}, {
+				id: MenuId.CommandPalette,
+				when: ContextKeyExpr.notEquals(`config.${LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION}`, ActivityBarPosition.DEFAULT),
+			}]
+		});
+	}
+	run(accessor: ServicesAccessor): void {
+		const configurationService = accessor.get(IConfigurationService);
+		configurationService.updateValue(LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION, ActivityBarPosition.DEFAULT);
+	}
+});
+
+registerAction2(class extends Action2 {
+	constructor() {
+		super({
+			id: 'workbench.action.secondaryActivityBarLocation.side',
+			title: {
+				...localize2('positionSecondaryActivityBarSide', 'Move Secondary Activity Bar to Side'),
+				mnemonicTitle: localize({ key: 'miSideSecondaryActivityBar', comment: ['&& denotes a mnemonic'] }, "&&Side"),
+			},
+			shortTitle: localize('secondarySide', "Side"),
+			category: Categories.View,
+			toggled: ContextKeyExpr.equals(`config.${LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION}`, ActivityBarPosition.SIDE),
+			menu: [{
+				id: MenuId.SecondaryActivityBarPositionMenu,
+				order: 2
+			}, {
+				id: MenuId.CommandPalette,
+				when: ContextKeyExpr.notEquals(`config.${LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION}`, ActivityBarPosition.SIDE),
+			}]
+		});
+	}
+	run(accessor: ServicesAccessor): void {
+		const configurationService = accessor.get(IConfigurationService);
+		configurationService.updateValue(LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION, ActivityBarPosition.SIDE);
+	}
+});
+
+registerAction2(class extends Action2 {
+	constructor() {
+		super({
+			id: 'workbench.action.secondaryActivityBarLocation.top',
+			title: {
+				...localize2('positionSecondaryActivityBarTop', 'Move Secondary Activity Bar to Top'),
+				mnemonicTitle: localize({ key: 'miTopSecondaryActivityBar', comment: ['&& denotes a mnemonic'] }, "&&Top"),
+			},
+			shortTitle: localize('secondaryTop', "Top"),
+			category: Categories.View,
+			toggled: ContextKeyExpr.equals(`config.${LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION}`, ActivityBarPosition.TOP),
+			menu: [{
+				id: MenuId.SecondaryActivityBarPositionMenu,
+				order: 3
+			}, {
+				id: MenuId.CommandPalette,
+				when: ContextKeyExpr.notEquals(`config.${LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION}`, ActivityBarPosition.TOP),
+			}]
+		});
+	}
+	run(accessor: ServicesAccessor): void {
+		const configurationService = accessor.get(IConfigurationService);
+		configurationService.updateValue(LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION, ActivityBarPosition.TOP);
+	}
+});
+
+registerAction2(class extends Action2 {
+	constructor() {
+		super({
+			id: 'workbench.action.secondaryActivityBarLocation.bottom',
+			title: {
+				...localize2('positionSecondaryActivityBarBottom', 'Move Secondary Activity Bar to Bottom'),
+				mnemonicTitle: localize({ key: 'miBottomSecondaryActivityBar', comment: ['&& denotes a mnemonic'] }, "&&Bottom"),
+			},
+			shortTitle: localize('secondaryBottom', "Bottom"),
+			category: Categories.View,
+			toggled: ContextKeyExpr.equals(`config.${LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION}`, ActivityBarPosition.BOTTOM),
+			menu: [{
+				id: MenuId.SecondaryActivityBarPositionMenu,
+				order: 4
+			}, {
+				id: MenuId.CommandPalette,
+				when: ContextKeyExpr.notEquals(`config.${LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION}`, ActivityBarPosition.BOTTOM),
+			}]
+		});
+	}
+	run(accessor: ServicesAccessor): void {
+		const configurationService = accessor.get(IConfigurationService);
+		configurationService.updateValue(LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION, ActivityBarPosition.BOTTOM);
+	}
+});
+
+registerAction2(class extends Action2 {
+	constructor() {
+		super({
+			id: 'workbench.action.secondaryActivityBarLocation.hide',
+			title: {
+				...localize2('hideSecondaryActivityBar', 'Hide Secondary Activity Bar'),
+				mnemonicTitle: localize({ key: 'miHideSecondaryActivityBar', comment: ['&& denotes a mnemonic'] }, "&&Hidden"),
+			},
+			shortTitle: localize('secondaryHide', "Hidden"),
+			category: Categories.View,
+			toggled: ContextKeyExpr.equals(`config.${LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION}`, ActivityBarPosition.HIDDEN),
+			menu: [{
+				id: MenuId.SecondaryActivityBarPositionMenu,
+				order: 5
+			}, {
+				id: MenuId.CommandPalette,
+				when: ContextKeyExpr.notEquals(`config.${LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION}`, ActivityBarPosition.HIDDEN),
+			}]
+		});
+	}
+	run(accessor: ServicesAccessor): void {
+		const configurationService = accessor.get(IConfigurationService);
+		configurationService.updateValue(LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION, ActivityBarPosition.HIDDEN);
+	}
+});
+
+MenuRegistry.appendMenuItem(MenuId.ViewContainerTitleContext, {
+	submenu: MenuId.SecondaryActivityBarPositionMenu,
+	title: localize('positionSecondaryActivityBar', "Secondary Activity Bar Position"),
+	when: ContextKeyExpr.equals('viewContainerLocation', ViewContainerLocationToString(ViewContainerLocation.AuxiliaryBar)),
 	group: '3_workbench_layout_move',
 	order: 1
 });

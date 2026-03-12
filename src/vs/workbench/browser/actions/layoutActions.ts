@@ -1417,6 +1417,14 @@ const MoveSideBarActions: CustomizeLayoutItem[] = [
 	CreateOptionLayoutItem(MoveSidebarRightAction.ID, ContextKeyExpr.equals('config.workbench.sideBar.location', 'right'), localize('rightSideBar', "Right"), panelRightIcon),
 ];
 
+const SecondaryActivityBarPositionActions: CustomizeLayoutItem[] = [
+	CreateOptionLayoutItem('workbench.action.secondaryActivityBarLocation.default', ContextKeyExpr.equals(`config.${LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION}`, 'default'), localize('secondaryActivityBarDefault', "Default")),
+	CreateOptionLayoutItem('workbench.action.secondaryActivityBarLocation.side', ContextKeyExpr.equals(`config.${LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION}`, 'side'), localize('secondaryActivityBarSide', "Side")),
+	CreateOptionLayoutItem('workbench.action.secondaryActivityBarLocation.top', ContextKeyExpr.equals(`config.${LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION}`, 'top'), localize('secondaryActivityBarTop', "Top")),
+	CreateOptionLayoutItem('workbench.action.secondaryActivityBarLocation.bottom', ContextKeyExpr.equals(`config.${LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION}`, 'bottom'), localize('secondaryActivityBarBottom', "Bottom")),
+	CreateOptionLayoutItem('workbench.action.secondaryActivityBarLocation.hide', ContextKeyExpr.equals(`config.${LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION}`, 'hidden'), localize('secondaryActivityBarHidden', "Hidden")),
+];
+
 const AlignPanelActions: CustomizeLayoutItem[] = [
 	CreateOptionLayoutItem('workbench.action.alignPanelLeft', PanelAlignmentContext.isEqualTo('left'), localize('leftPanel', "Left"), panelAlignmentLeftIcon),
 	CreateOptionLayoutItem('workbench.action.alignPanelRight', PanelAlignmentContext.isEqualTo('right'), localize('rightPanel', "Right"), panelAlignmentRightIcon),
@@ -1436,7 +1444,7 @@ const MiscLayoutOptions: CustomizeLayoutItem[] = [
 ];
 
 const LayoutContextKeySet = new Set<string>();
-for (const { active } of [...ToggleVisibilityActions, ...MoveSideBarActions, ...AlignPanelActions, ...QuickInputActions, ...MiscLayoutOptions]) {
+for (const { active } of [...ToggleVisibilityActions, ...MoveSideBarActions, ...SecondaryActivityBarPositionActions, ...AlignPanelActions, ...QuickInputActions, ...MiscLayoutOptions]) {
 	for (const key of active.keys()) {
 		LayoutContextKeySet.add(key);
 	}
@@ -1516,6 +1524,11 @@ registerAction2(class CustomizeLayoutAction extends Action2 {
 				label: localize('sideBarPosition', "Primary Side Bar Position")
 			},
 			...MoveSideBarActions.map(toQuickPickItem),
+			{
+				type: 'separator',
+				label: localize('secondaryActivityBarPosition', "Secondary Activity Bar Position")
+			},
+			...SecondaryActivityBarPositionActions.map(toQuickPickItem),
 			{
 				type: 'separator',
 				label: localize('panelAlignment', "Panel Alignment")
@@ -1614,6 +1627,7 @@ registerAction2(class CustomizeLayoutAction extends Action2 {
 				resetSetting('workbench.sideBar.location');
 				resetSetting('workbench.statusBar.visible');
 				resetSetting('workbench.panel.defaultLocation');
+				resetSetting(LayoutSettings.SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION);
 
 				if (!isMacintosh || !isNative) {
 					resetSetting('window.menuBarVisibility');

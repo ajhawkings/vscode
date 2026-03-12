@@ -22,6 +22,7 @@ export const enum Parts {
 	TITLEBAR_PART = 'workbench.parts.titlebar',
 	BANNER_PART = 'workbench.parts.banner',
 	ACTIVITYBAR_PART = 'workbench.parts.activitybar',
+	SECONDARY_ACTIVITYBAR_PART = 'workbench.parts.secondaryActivitybar',
 	SIDEBAR_PART = 'workbench.parts.sidebar',
 	PANEL_PART = 'workbench.parts.panel',
 	AUXILIARYBAR_PART = 'workbench.parts.auxiliarybar',
@@ -45,6 +46,7 @@ export const enum LayoutSettings {
 	ACTIVITY_BAR_LOCATION = 'workbench.activityBar.location',
 	ACTIVITY_BAR_AUTO_HIDE = 'workbench.activityBar.autoHide',
 	ACTIVITY_BAR_COMPACT = 'workbench.activityBar.compact',
+	SECONDARY_SIDEBAR_ACTIVITY_BAR_LOCATION = 'workbench.secondarySideBar.activityBar.location',
 	EDITOR_TABS_MODE = 'workbench.editor.showTabs',
 	EDITOR_ACTIONS_LOCATION = 'workbench.editor.editorActionsLocation',
 	COMMAND_CENTER = 'window.commandCenter',
@@ -55,7 +57,8 @@ export const enum ActivityBarPosition {
 	DEFAULT = 'default',
 	TOP = 'top',
 	BOTTOM = 'bottom',
-	HIDDEN = 'hidden'
+	HIDDEN = 'hidden',
+	SIDE = 'side'
 }
 
 export const enum EditorTabsMode {

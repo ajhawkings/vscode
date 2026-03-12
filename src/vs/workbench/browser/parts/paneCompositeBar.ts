@@ -829,6 +829,26 @@ class ViewContainerActivityAction extends CompositeBarAction {
 			}
 		}
 
+		if (this.part === Parts.SECONDARY_ACTIVITYBAR_PART) {
+			const auxiliaryBarVisible = this.layoutService.isVisible(Parts.AUXILIARYBAR_PART);
+			const activeComposite = this.paneCompositePart.getActivePaneComposite();
+			const focusBehavior = this.configurationService.getValue<string>('workbench.activityBar.iconClickBehavior');
+
+			if (auxiliaryBarVisible && activeComposite?.getId() === this.compositeBarActionItem.id) {
+				switch (focusBehavior) {
+					case 'focus':
+						this.paneCompositePart.openPaneComposite(this.compositeBarActionItem.id, focus);
+						break;
+					case 'toggle':
+					default:
+						this.layoutService.setPartHidden(true, Parts.AUXILIARYBAR_PART);
+						break;
+				}
+
+				return;
+			}
+		}
+
 		await this.paneCompositePart.openPaneComposite(this.compositeBarActionItem.id, focus);
 		return this.activate();
 	}
